@@ -14,11 +14,13 @@ CONFIG="$(realpath "${1:-$REPO/config/experiment.yaml}")"
 shift || true
 MODE_ARGS=("$@")
 
-ENVS="$HOME/anaconda3/envs"
+CONDA_BASE="${FYP_CONDA_BASE:-$( (conda info --base) 2>/dev/null || echo "$HOME/anaconda3")}"
+export FYP_CONDA_BASE="$CONDA_BASE"   # read by nextflow.config
+ENVS="$CONDA_BASE/envs"
+export PATH="$CONDA_BASE/condabin:$HOME/bin:$PATH"   # Nextflow activates the envs with conda
 PY="$ENVS/env-analysis/bin/python"
 NXF="$ENVS/env-workflow/bin/nextflow"
 export TMPDIR="$HOME/tmp" NXF_TEMP="$HOME/tmp"
-export PATH="$HOME/anaconda3/condabin:$HOME/bin:$PATH"   # Nextflow activates the envs with conda
 mkdir -p "$TMPDIR"
 
 OUTDIR="$("$PY" -c "import yaml,sys; print(yaml.safe_load(open(sys.argv[1]))['outdir'])" "$CONFIG")"

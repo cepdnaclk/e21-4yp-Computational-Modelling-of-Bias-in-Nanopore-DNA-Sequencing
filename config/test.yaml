@@ -6,9 +6,9 @@ fast5:
 - /home/induwara/dna_data/FYP/fast5_pass-20260930T045200Z-1-001/fast5_pass/FAX38735_pass_0b607977_50b67caa_5.fast5
 threads: 16
 gpu_device: cuda:all
-guppy_bin: /home/induwara/bin/guppy_basecaller
-dorado_bin: /home/induwara/bin/dorado
-dorado_models: /home/induwara/tools/dorado_models
+guppy_bin: guppy_basecaller      # found in ~/bin (setup.sh)
+dorado_bin: dorado
+dorado_models: ~/tools/dorado_models
 qc_constants:
   maxlen: 50000
 host_map:

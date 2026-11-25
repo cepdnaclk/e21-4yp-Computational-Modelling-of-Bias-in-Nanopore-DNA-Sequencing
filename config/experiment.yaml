@@ -17,9 +17,9 @@ fast5:
 
 threads: 16
 gpu_device: cuda:all
-guppy_bin: /home/induwara/bin/guppy_basecaller
-dorado_bin: /home/induwara/bin/dorado
-dorado_models: /home/induwara/tools/dorado_models
+guppy_bin: guppy_basecaller      # found in ~/bin (setup.sh)
+dorado_bin: dorado
+dorado_models: ~/tools/dorado_models
 
 # Fixed settings: recorded in every metadata.json but not varied.
 qc_constants:

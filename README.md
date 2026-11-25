@@ -96,6 +96,30 @@ model with every factor as a main effect (`--interactions` adds two-way terms).
 
 ## Environments and tools
 
+**New machine or new team member:** clone the repo and run `./setup.sh` (no sudo).
+It finds or installs conda (Miniforge), sets the conda-forge + bioconda channels,
+builds every environment, installs Dorado, Guppy and the R9.4.1 models, and adds a
+marked block to `~/.bashrc` (`~/bin` on PATH, `FYP_CONDA_BASE`, `DORADO_MODELS`,
+`TMPDIR`). It is safe to re-run.
+
+Environments are rebuilt from, in order of exactness:
+
+| File | What it pins |
+|---|---|
+| `envs/lock/<env>.linux-64.lock` | every conda package: exact build and download URL, md5-checked (Linux x86_64) |
+| `envs/lock/<env>.pip.txt` | every pip-installed Python module, `name==version`; SimReadUntil at a fixed git commit |
+| `envs/<env>.yml` | versions only (fallback for other Linux setups) |
+
+On Linux x86_64 the result is package-for-package identical (tested by rebuilding
+all 11 environments and comparing every name, version, build and channel). The
+script then imports every Python module the project uses in the environment that
+runs it and runs each `bin/*.py --help`.
+
+Options: `--check` (versions only), `--skip-basecallers`, `--recreate <env>`,
+`--no-bashrc`, `--env-suffix -test` (rebuild under new names to test).
+**After installing or upgrading anything, run `./setup.sh --export` and commit `envs/`.**
+Not covered (system level): the NVIDIA driver, git and curl.
+
 Conda environments (`envs/`) plus two binaries in `~/bin`: Dorado 0.9.6 (the last
 release line with R9.4.1 models; it reads FAST5 directly) and Guppy 6.5.7. Models
 are in `~/tools/dorado_models`. In `env-sim`, SimReadUntil is installed from GitHub

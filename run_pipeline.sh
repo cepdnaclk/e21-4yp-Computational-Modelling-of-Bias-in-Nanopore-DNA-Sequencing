@@ -4,6 +4,9 @@
 #   ./run_pipeline.sh                          # config/experiment.yaml, full design
 #   ./run_pipeline.sh config/test.yaml         # small test
 #   ./run_pipeline.sh config/experiment.yaml --mode ofat
+#   ./run_pipeline.sh config/experiment.yaml --select basecall=guppy-6.5.7:hac --select minq=8,9,10
+#   (any option after the config goes to bin/design.py: --mode, --select, --strict)
+#   Preview without running: python bin/design.py config/experiment.yaml --out ~/tmp/d.csv --select ... --list
 #
 # Steps: 1) design.py builds design.csv   2) Nextflow runs every combination
 # (-resume reuses finished stages)   3) collect_results.py builds the summary tables.
@@ -46,11 +49,13 @@ cd "$OUTDIR/_runs"
 "$NXF" run "$REPO/main.nf" \
   -params-file "$CONFIG" \
   --design "$RUN_DIR/design.csv" \
+  --conda_base "$CONDA_BASE" \
   -w "$WORK_DIR" \
   -resume \
   -with-trace "$RUN_DIR/trace.tsv" \
   -with-report "$RUN_DIR/report.html" \
-  -with-timeline "$RUN_DIR/timeline.html"
+  -with-timeline "$RUN_DIR/timeline.html" \
+  ${FYP_NXF_ARGS:-}        # e.g. FYP_NXF_ARGS="-process.errorStrategy=ignore" to keep going past failures
 
 # 3) Collect every metadata.json + results.tsv into summary tables
 "$PY" "$REPO/bin/collect_results.py" --outdir "$OUTDIR"

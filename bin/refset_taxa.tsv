@@ -1,0 +1,29 @@
+# Reference set for the classifier and search databases: group <tab> NCBI taxon name.
+# NCBI reference genomes (all reference genomes for a genus) are downloaded per line.
+# Chosen for the seaweed sample: the host clade, other algae that could be confused with it,
+# and bacterial genera reported on Ulva and other macroalgae (Roseobacter clade, Flavobacteriia,
+# Alteromonadales, Vibrionaceae). group "host" is left out of the refset_nohost database.
+host	Ulva
+algae	Chlamydomonas reinhardtii
+algae	Ostreococcus tauri
+algae	Ectocarpus
+algae	Saccharina japonica
+algae	Pyropia
+algae	Phaeodactylum tricornutum
+bacteria	Pseudoalteromonas
+bacteria	Vibrio
+bacteria	Alteromonas
+bacteria	Marinomonas
+bacteria	Zobellia
+bacteria	Maribacter
+bacteria	Polaribacter
+bacteria	Cellulophaga
+bacteria	Algibacter
+bacteria	Psychroserpens
+bacteria	Sulfitobacter
+bacteria	Roseobacter
+bacteria	Roseovarius
+bacteria	Phaeobacter
+bacteria	Hyphomonas
+bacteria	Leucothrix
+bacteria	Escherichia coli

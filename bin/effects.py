@@ -26,8 +26,8 @@ import pandas as pd
 import statsmodels.formula.api as smf
 import yaml
 
-UPSTREAM = ["basecaller", "model", "trim", "minq", "minlen"]
-ANALYSIS = ["aligner", "host_ref", "classifier", "db", "blast_tool", "blast_db"]
+UPSTREAM = ["basecaller", "model", "trim", "qfilter", "minq", "keep", "minlen"]
+ANALYSIS = ["aligner", "host_ref", "classifier", "refdb", "confidence", "blast_tool"]
 
 
 def main():

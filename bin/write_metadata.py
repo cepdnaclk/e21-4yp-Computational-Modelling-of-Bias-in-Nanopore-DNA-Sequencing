@@ -15,7 +15,7 @@ import os
 import platform
 import socket
 
-from fyp_lib import MEANQ_DEFINITION, parse_combo_path
+from fyp_lib import MEANPHRED_DEFINITION, MEANQ_DEFINITION, parse_combo_path
 
 
 def md5(path, block=1 << 20):
@@ -66,7 +66,8 @@ def main():
         "python": platform.python_version(),
     }
     if a.stage in ("basecall", "trim", "qc"):
-        meta["params"].setdefault("meanq_definition", MEANQ_DEFINITION)
+        qf = meta["factors"].get("qfilter", "meanerr")
+        meta["params"].setdefault("read_q_definition", MEANPHRED_DEFINITION if qf == "meanphred" else MEANQ_DEFINITION)
     for p in a.outputs:
         if os.path.exists(p) and os.path.isfile(p):
             meta["outputs"][os.path.basename(p)] = {"bytes": os.path.getsize(p), "md5": md5(os.path.realpath(p))}

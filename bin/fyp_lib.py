@@ -55,6 +55,16 @@ def mean_q(qual: str) -> float:
     return -10 * math.log10(err) if err > 0 else 60.0
 
 
+MEANPHRED_DEFINITION = "arithmetic mean of the per-base Phred Q values"
+
+
+def mean_phred(qual: str) -> float:
+    """Arithmetic mean of per-base Q. Always >= mean_q(); some tools report this one."""
+    if not qual:
+        return 0.0
+    return sum(qual.encode("ascii")) / len(qual) - 33
+
+
 def gc_percent(seq: str) -> float:
     if not seq:
         return 0.0

@@ -23,13 +23,17 @@
 #        b. envs/<env>.yml                 same versions, builds re-solved (other Linux / conda)
 #        c. unpinned package list          last resort; prints a warning (compare versions!)
 #      then imports every Python module the project's scripts use, in the env that runs them
-#   4. Dorado 0.9.6 + R9.4.1 models (~/tools/dorado_models), Guppy 6.5.7 GPU, links in ~/bin
-#   5. ~/.bashrc: conda init, ~/bin on PATH, FYP_CONDA_BASE, DORADO_MODELS, TMPDIR
+#   4. Dorado 0.9.6 + R9.4.1 models (~/tools/dorado_models), Guppy 6.5.7 and 6.2.1 (the lab's
+#      version) GPU builds, Bonito R9.4.1 models, links in ~/bin
+#   5. NCBI taxonomy (taxdump) in the data folder, used by every classifier summary
+#   6. ~/.bashrc: conda init, ~/bin on PATH, FYP_CONDA_BASE, DORADO_MODELS, TMPDIR
 set -euo pipefail
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DORADO_VERSION=0.9.6          # last release line with R9.4.1 models and FAST5 input
-GUPPY_VERSION=6.5.7
+GUPPY_VERSIONS=(6.5.7 6.2.1)     # 6.2.1 = the version the lab used (Method PDF)
+BONITO_MODELS=(dna_r9.4.1_e8_fast@v3.4 dna_r9.4.1_e8_hac@v3.3 dna_r9.4.1_e8_sup@v3.3)
+TAXONOMY_DIR="${FYP_TAXONOMY:-$HOME/dna_data/FYP/databases/taxonomy}"
 DORADO_MODELS=(dna_r9.4.1_e8_fast@v3.4 dna_r9.4.1_e8_hac@v3.3 dna_r9.4.1_e8_sup@v3.3 dna_r9.4.1_e8_hac@v3.3_5mCG_5hmCG@v0)
 TOOLS="$HOME/tools"
 BIN="$HOME/bin"
@@ -39,10 +43,14 @@ LOG="$HOME/.cache/fyp-setup"
 # Unpinned fallback for each environment (the packages originally installed).
 declare -A FALLBACK=(
   [env-basecall]="python=3.10 samtools hdf5 h5py pip"
-  [env-qc]="nanofilt nanoplot nanostat porechop porechop_abi seqkit chopper filtlong"
-  [env-align]="minimap2 samtools bedtools"
+  [env-qc]="nanofilt nanoplot nanostat porechop porechop_abi seqkit chopper filtlong cutadapt fastqc python-edlib"
+  [env-align]="minimap2 samtools bedtools winnowmap ngmlr lra python=3.10"
   [env-classify]="kraken2 bracken centrifuge krakentools"
-  [env-analysis]="python=3.10 pandas numpy scipy matplotlib seaborn biopython blast pysam pyarrow h5py scikit-learn statsmodels lightgbm shap scikit-bio jupyterlab ncbi-genome-download ncbi-datasets-cli seqkit minimap2 pyyaml"
+  [env-analysis]="python=3.10 pandas numpy scipy matplotlib seaborn biopython blast pysam pyarrow h5py scikit-learn statsmodels lightgbm shap scikit-bio jupyterlab ncbi-genome-download ncbi-datasets-cli seqkit minimap2 pyyaml last mmseqs2 diamond"
+  [env-hostile]="hostile"
+  [env-taxa]="krakenuniq centrifuger kaiju metabuli ganon taxor kmcp sylph taxonkit"
+  [env-protein]="diamond megan"
+  [env-bonito]="python=3.10 pip"
   [env-signal]="ont-modkit f5c slow5tools"
   [env-emu]="emu flatten-dict"
   [env-metamaps]="metamaps"
@@ -50,7 +58,6 @@ declare -A FALLBACK=(
   [env-sim]="python=3.10 nanosim pip"
   [env-workflow]="nextflow"
 )
-FALLBACK[env-align]="${FALLBACK[env-align]} python=3.10"
 # pip packages that are not on PyPI under these names; installed separately below.
 PIP_SKIP_REGEX='^ *- (simreaduntil)=='
 SIMREADUNTIL="git+https://github.com/ratschlab/sim_read_until.git@785beee0b2e3c99d74a89e69241777747b28f79a"
@@ -60,11 +67,12 @@ PLATFORM="linux-64"
 # Python modules each environment must provide (third-party only; the rest is stdlib).
 declare -A PY_MODULES=(
   [env-basecall]="h5py numpy pod5 ont_fast5_api"
-  [env-qc]=""
+  [env-qc]="edlib"
   [env-align]=""
   [env-classify]=""
   [env-analysis]="yaml pandas numpy scipy matplotlib seaborn Bio pysam pyarrow h5py sklearn statsmodels lightgbm shap skbio jupyterlab"
   [env-sim]="simreaduntil"
+  [env-bonito]="bonito torch"
 )
 
 SKIP_BASECALLERS=0; DO_BASHRC=1; CHECK_ONLY=0; EXPORT=0; SUFFIX=""; RECREATE=()
@@ -192,6 +200,7 @@ create_env() {
     || { warn "$target FAILED (see $LOG/$target.log)"; return 1; }
   case "$name" in
     env-basecall) "$ENVS/$target/bin/python" -m pip install -q pod5 ont-fast5-api "setuptools<81" >> "$LOG/$target.log" 2>&1 ;;
+    env-bonito)   "$ENVS/$target/bin/python" -m pip install -q ont-bonito==0.7.3 "setuptools<81" >> "$LOG/$target.log" 2>&1 ;;
   esac
   grep -q '^git+' "$LOCKDIR/$name.pip.txt" 2>/dev/null && install_pip_git "$target" "$name"
   echo "  OK $target (UNPINNED: versions may differ from envs/$name.yml)"
@@ -232,14 +241,38 @@ if [[ $CHECK_ONLY == 0 && $SKIP_BASECALLERS == 0 ]]; then
     else "$BIN/dorado" download --model "$m" --models-directory "$TOOLS/dorado_models" >> "$LOG/dorado.log" 2>&1 && echo "  OK $m" || warn "model $m failed"; fi
   done
 
-  step "Installing Guppy $GUPPY_VERSION (GPU build)"
-  GDIR="$TOOLS/guppy-$GUPPY_VERSION"
-  if [[ "$ARCH" != x86_64 ]]; then warn "Guppy archive is x86_64 only; skipped"
-  elif [[ ! -x "$GDIR/bin/guppy_basecaller" ]]; then
-    curl -fsSL -o "$TMPDIR/guppy.tar.gz" "https://cdn.oxfordnanoportal.com/software/analysis/ont-guppy_${GUPPY_VERSION}_linux64.tar.gz"
-    mkdir -p "$GDIR" && tar -xzf "$TMPDIR/guppy.tar.gz" -C "$GDIR" --strip-components=1 && rm -f "$TMPDIR/guppy.tar.gz"
-  else echo "  exists: $GDIR"; fi
-  [[ -x "$GDIR/bin/guppy_basecaller" ]] && ln -sf "$GDIR/bin/guppy_basecaller" "$BIN/guppy_basecaller"
+  for GUPPY_VERSION in "${GUPPY_VERSIONS[@]}"; do
+    step "Installing Guppy $GUPPY_VERSION (GPU build)"
+    GDIR="$TOOLS/guppy-$GUPPY_VERSION"
+    if [[ "$ARCH" != x86_64 ]]; then warn "Guppy archive is x86_64 only; skipped"
+    elif [[ ! -x "$GDIR/bin/guppy_basecaller" ]]; then
+      curl -fsSL -o "$TMPDIR/guppy.tar.gz" "https://cdn.oxfordnanoportal.com/software/analysis/ont-guppy_${GUPPY_VERSION}_linux64.tar.gz"
+      mkdir -p "$GDIR" && tar -xzf "$TMPDIR/guppy.tar.gz" -C "$GDIR" --strip-components=1 && rm -f "$TMPDIR/guppy.tar.gz"
+    else echo "  exists: $GDIR"; fi
+  done
+  # ~/bin/guppy_basecaller = newest; the pipeline calls each version by its full path
+  [[ -x "$TOOLS/guppy-6.5.7/bin/guppy_basecaller" ]] && ln -sf "$TOOLS/guppy-6.5.7/bin/guppy_basecaller" "$BIN/guppy_basecaller"
+
+  step "Downloading Bonito R9.4.1 models"
+  BMODELS="$(ls -d "$ENVS"/env-bonito$SUFFIX/lib/python3*/site-packages/bonito/models 2>/dev/null | head -1)"
+  if [[ -z "$BMODELS" ]]; then warn "env-bonito$SUFFIX not found; Bonito models skipped"
+  else for m in "${BONITO_MODELS[@]}"; do
+    if [[ -d "$BMODELS/$m" ]]; then echo "  exists: $m"
+    else curl -fsSL -o "$TMPDIR/$m.zip" "https://cdn.oxfordnanoportal.com/software/analysis/bonito/$m.zip" \
+         && "$ENVS/env-analysis$SUFFIX/bin/python" -m zipfile -e "$TMPDIR/$m.zip" "$BMODELS" && rm -f "$TMPDIR/$m.zip" && echo "  OK $m" || warn "Bonito model $m failed"; fi
+  done; fi
+fi
+
+# ---------------------------------------------------------------- taxonomy
+if [[ $CHECK_ONLY == 0 ]]; then
+  step "NCBI taxonomy (taxdump) in $TAXONOMY_DIR"
+  if [[ -s "$TAXONOMY_DIR/nodes.dmp" ]]; then echo "  exists"
+  else mkdir -p "$TAXONOMY_DIR"
+    curl -fsSL --retry 3 -o "$TMPDIR/taxdump.tar.gz" https://ftp.ncbi.nih.gov/pub/taxonomy/taxdump.tar.gz \
+      && tar -xzf "$TMPDIR/taxdump.tar.gz" -C "$TAXONOMY_DIR" nodes.dmp names.dmp merged.dmp delnodes.dmp \
+      && echo "NCBI taxdump downloaded $(date -u +%F)" > "$TAXONOMY_DIR/SOURCE.txt" && rm -f "$TMPDIR/taxdump.tar.gz" \
+      && echo "  OK" || warn "taxdump download failed"
+  fi
 fi
 
 # ---------------------------------------------------------------- 4. ~/.bashrc
@@ -302,6 +335,23 @@ v env-metamaps metamaps run_in env-metamaps metamaps
 v env-assembly flye run_in env-assembly flye --version
 v env-sim nanosim run_in env-sim simulator.py --version
 v env-sim simreaduntil run_in env-sim python -c "import simreaduntil; print('ok')"
+v - guppy-6.2.1 bash -c "'$TOOLS/guppy-6.2.1/bin/guppy_basecaller' --version | grep -o 'Version [^ ,]*'"
+v env-bonito bonito run_in env-bonito bash -c "bonito --version 2>&1 | grep -v -i warn | grep -v pkg_resources | tail -1"
+v env-qc cutadapt run_in env-qc cutadapt --version
+v env-qc fastqc run_in env-qc fastqc --version
+v env-align winnowmap run_in env-align winnowmap --version
+v env-align ngmlr run_in env-align bash -c "ngmlr --version 2>&1 | grep -i version"
+v env-hostile hostile run_in env-hostile hostile --version
+v env-taxa kaiju run_in env-taxa bash -c "kaiju -h 2>&1 | grep -i 'kaiju 1'"
+v env-taxa metabuli run_in env-taxa metabuli version
+v env-taxa centrifuger run_in env-taxa centrifuger -v
+v env-taxa krakenuniq run_in env-taxa krakenuniq --version
+v env-taxa ganon run_in env-taxa ganon --version
+v env-taxa kmcp run_in env-taxa kmcp version
+v env-taxa sylph run_in env-taxa sylph --version
+v env-protein diamond run_in env-protein diamond version
+v env-analysis last run_in env-analysis lastal --version
+v env-analysis mmseqs2 run_in env-analysis mmseqs version
 v env-workflow nextflow bash -c "PATH='$ENVS/env-workflow$SUFFIX/bin':\$PATH nextflow -version | grep -o 'version [0-9.]*'"
 echo
 echo "Logs: $LOG"

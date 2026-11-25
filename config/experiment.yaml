@@ -1,11 +1,17 @@
 # Phase 1 experiment design for the seaweed case study.
 #
-# Every factor level listed under `factors` and `analyses` becomes part of the
-# combination grid (design.py). Each combination gets its own folder under
-# `outdir`, named key=value per factor, holding metadata.json and results.tsv.
-#
+# Every level listed under `factors` and `analyses` is part of the combination
+# grid (bin/design.py). Each combination gets its own folder under `outdir`,
+# named key=value per factor, holding metadata.json and results.tsv.
 # Resources that do not exist yet (databases, references) are skipped with a
-# warning, so you can run the early stages before Week 2 downloads finish.
+# warning, so early stages can run before every download is finished.
+#
+# Size of the full grid with every level below: 12 basecalls x 6 trims x 22 QC
+# settings = 1,584 QC folders, times ~60 analyses each. That is why the default
+# mode is ofat (baseline + one change at a time). Use --mode full with --select
+# to run complete grids over the factors you are studying, for example:
+#   ./run_pipeline.sh config/experiment.yaml --mode full --select analysis=none
+#   ./run_pipeline.sh config/experiment.yaml --mode full --select analysis=host_map --select aligner=minimap2
 
 sample: seaweed_green_jafna_A
 outdir: /home/induwara/dna_data/FYP/outputs
@@ -17,76 +23,116 @@ fast5:
 
 threads: 16
 gpu_device: cuda:all
-guppy_bin: guppy_basecaller      # found in ~/bin (setup.sh)
-dorado_bin: dorado
-dorado_models: ~/tools/dorado_models
+taxonomy: /home/induwara/dna_data/FYP/databases/taxonomy     # NCBI taxdump used by every classifier summary
+host_taxid: "3118"     # genus Ulva: counted as "host" when BLAST hits are grouped by taxonomy (core_nt)
 
 # Fixed settings: recorded in every metadata.json but not varied.
 qc_constants:
-  maxlen: 50000        # reads longer than this are the Q~3 artefacts; kept apart, not "failed"
+  maxlen: 50000          # reads longer than this are the Q~3 artefacts; kept apart, not "failed"
 host_map:
-  min_mapq: 20
+  mapq: "0,20,60"        # host share is reported at each MAPQ cut-off from one alignment
+trim:                    # LSK110 ligation adapter (LA) from the lab protocol (Method PDF)
+  lsk110_top: CCTGTACTTCGTTCAGTTACGTATTGCT      # 5' end of every read
+  lsk110_bottom: GCAATACGTAACTGAACGAAGTACAGG    # after the insert (3' end)
+  scan_window: 150       # adapter_scan.py: LA counted within the first / last 150 nt (metric at every trim node)
+  cutadapt_error: 0.2
+  cutadapt_overlap: 12
+  headcrop: 30           # per-base Q is low in the first ~30 and last ~10 bases
+  tailcrop: 10
 blast:
-  subsample: 2000      # reads per read set (passed and failed), same seed everywhere
+  subsample: 2000        # reads per read set (passed and failed), same seed everywhere
   seed: 11
   evalue: 1e-5
   max_target_seqs: 5
 
 design:
-  mode: full           # full = all combinations | ofat = baseline + one factor at a time
-  # Baseline = the configuration that reproduces the original run, so every
-  # effect is "change relative to what was actually done".
+  mode: ofat             # ofat = baseline + one factor at a time | full = every combination
+  # Baseline = the lab's own pipeline (Method PDF): Guppy 6.2.1 HAC in GPU mode,
+  # Porechop adapter trimming, Guppy's Q9 pass filter, BLAST of the reads.
   baseline:
-    basecall: guppy-6.5.7:hac
-    trim: none
+    basecall: guppy-6.2.1:hac
+    trim: porechop
+    qfilter: meanerr
     minq: 9
+    keep: 90
     minlen: 0
+    aligner: minimap2
+    host_ref: ulva_chloroplast
+    classifier: kraken2
+    refdb: refset          # reference database for classify and blast
+    confidence: 0
+    blast_tool: megablast
 
 factors:
-  # basecaller:model pairs. The model tiers (fast/hac/sup) are named the same
-  # for both basecallers but are different networks; analyse basecall as one
-  # 6-level factor or as basecaller x tier, and say which.
+  # basecaller:model pairs. Tiers (fast/hac/sup) share names across basecallers
+  # but are different networks: analyse basecall as one factor, or say how.
   basecall:
+    - guppy-6.2.1:fast
+    - guppy-6.2.1:hac
+    - guppy-6.2.1:sup
     - guppy-6.5.7:fast
     - guppy-6.5.7:hac
     - guppy-6.5.7:sup
     - dorado-0.9.6:fast
     - dorado-0.9.6:hac
     - dorado-0.9.6:sup
-    # Existing basecalls (optional, imported, not re-run). guppy-6.2.1 covers only
-    # 28,000 of 35,631 reads, so compare it only on the shared read IDs.
-    # - minknow-7.2.13:fast
-    # - guppy-6.2.1:hac
-  trim: [none, porechop_abi]
-  minq: [0, 7, 8, 9, 10]   # 0 = no quality filter
+    - bonito-0.7.3:fast
+    - bonito-0.7.3:hac
+    - bonito-0.7.3:sup
+    # Existing basecalls, imported instead of re-run (optional):
+    # - minknow-live:fast       # MinKNOW real-time fast calls, all 10 files
+    # - guppy-6.2.1-lab:hac     # the lab's HAC run: only 7 of 10 files (28,000 reads)
+  # porechop: built-in adapter list (its SQK-NSK007 entry is close to, not the same as, LSK110)
+  # porechop_abi: built-in list + adapters inferred from the reads
+  # porechop_lsk110 / cutadapt_lsk110: ONLY the protocol's LSK110 ligation adapter
+  trim: [none, porechop, porechop_abi, porechop_lsk110, cutadapt_lsk110, headcrop]
+  qfilter: [meanerr, meanphred, filtlong]   # how pass/fail is decided
+  minq: [0, 7, 8, 9, 10]   # for meanerr / meanphred; 0 = no quality filter
+  keep: [90]               # for filtlong: keep the best N% by length x quality
   minlen: [0, 500]         # 0 = no length filter
 
 analyses:
   host_map:
-    aligner: [minimap2]
-    host_ref: [ulva_chloroplast]     # add nuclear / other species refs as they are downloaded
+    aligner: [minimap2, winnowmap, ngmlr, lra, hostile]
+    host_ref: [ulva_chloroplast, ulva_refset]   # chloroplast only | all NCBI Ulva genomes of the reference set
   classify:
-    db: [k2_standard_08gb]
+    classifier: [kraken2, krakenuniq, centrifuge, centrifuger, kaiju, metabuli, ganon, taxor, kmcp, sylph, diamond, megan]
+    # reference database (content) = its own factor; a classifier x refdb pair runs where that
+    # classifier has a database for it (resources.refdbs.<refdb>.classifiers)
+    refdb: [refset, refset_nohost, standard_8gb, standard_16gb, pluspfp_16gb]
+    confidence: [0, 0.1, 0.5]          # Kraken2 --confidence (kraken2 only)
   blast:
-    blast_tool: [megablast, minimap2]  # also available: dc-megablast, blastn (slow)
-    blast_db: [algae_bact]
+    blast_tool: [megablast, dc-megablast, blastn, minimap2, diamond, last, mmseqs2]
+    refdb: [refset, refset_nohost, core_nt]   # core_nt: NCBI nucleotide (blastn family), as in the lab protocol
 
 resources:
   basecallers:
+    guppy-6.2.1:                       # the lab's version, rerun on all 10 files
+      type: guppy
+      bin: ~/tools/guppy-6.2.1/bin/guppy_basecaller
+      models: {fast: dna_r9.4.1_450bps_fast.cfg, hac: dna_r9.4.1_450bps_hac.cfg, sup: dna_r9.4.1_450bps_sup.cfg}
     guppy-6.5.7:
       type: guppy
+      bin: ~/tools/guppy-6.5.7/bin/guppy_basecaller
       models: {fast: dna_r9.4.1_450bps_fast.cfg, hac: dna_r9.4.1_450bps_hac.cfg, sup: dna_r9.4.1_450bps_sup.cfg}
     dorado-0.9.6:
       type: dorado
+      bin: ~/tools/dorado-0.9.6-linux-x64/bin/dorado
+      models_dir: ~/tools/dorado_models
       models: {fast: "dna_r9.4.1_e8_fast@v3.4", hac: "dna_r9.4.1_e8_hac@v3.3", sup: "dna_r9.4.1_e8_sup@v3.3"}
-    minknow-7.2.13:
+    bonito-0.7.3:                      # ONT research basecaller (can also train custom models)
+      type: bonito
+      bin: ~/anaconda3/envs/env-bonito/bin/bonito
+      models_dir: ~/anaconda3/envs/env-bonito/lib/python3.10/site-packages/bonito/models
+      models: {fast: "dna_r9.4.1_e8_fast@v3.4", hac: "dna_r9.4.1_e8_hac@v3.3", sup: "dna_r9.4.1_e8_sup@v3.3"}
+    minknow-live:
       type: import
       models:
         fast:
           fastq:
             - /home/induwara/dna_data/FYP/fastq_pass-20260930T050807Z-1-001/fastq_pass
             - /home/induwara/dna_data/FYP/fastq_fail-20260930T050001Z-1-001/fastq_fail
-    guppy-6.2.1:
+    guppy-6.2.1-lab:
       type: import
       models:
         hac:
@@ -96,11 +142,29 @@ resources:
   host_refs:
     ulva_chloroplast:
       fasta: /home/induwara/dna_data/FYP/references/ulva_chloroplast/ulva_chloroplast.fa
-  classify_dbs:
-    k2_standard_08gb:
-      classifier: kraken2
-      path: /home/induwara/dna_data/FYP/databases/k2_standard_08gb
-  blast_dbs:
-    algae_bact:
-      db: /home/induwara/dna_data/FYP/databases/blast/algae_bact
-      fasta: /home/induwara/dna_data/FYP/databases/blast/algae_bact.fa
+    ulva_refset:                       # bin/download_databases.sh host_ref
+      fasta: /home/induwara/dna_data/FYP/references/ulva_refset/ulva_refset.fa
+  # Reference databases (levels of refdb), built / downloaded by bin/download_databases.sh.
+  #   root/<classifier>/  database of that classifier;  search: read-search database prefix (fasta = <prefix>.fa)
+  refdbs:
+    refset:          # host Ulva + other algae + seaweed-associated bacteria (bin/refset_taxa.tsv), every tool
+      root: /home/induwara/dna_data/FYP/databases/refdb/refset
+      classifiers: [kraken2, krakenuniq, centrifuge, centrifuger, kaiju, metabuli, ganon, taxor, kmcp, sylph, diamond, megan]
+      search: /home/induwara/dna_data/FYP/databases/refdb/refset/search/refdb
+    refset_nohost:   # the same without the host genomes
+      root: /home/induwara/dna_data/FYP/databases/refdb/refset_nohost
+      classifiers: [kraken2, krakenuniq, centrifuge, centrifuger, kaiju, metabuli, ganon, taxor, kmcp, sylph, diamond, megan]
+      search: /home/induwara/dna_data/FYP/databases/refdb/refset_nohost/search/refdb
+    standard_8gb:    # Kraken2 Standard (RefSeq archaea, bacteria, viral, plasmid, human) capped at 8 GB
+      root: /home/induwara/dna_data/FYP/databases/refdb/standard_8gb
+      classifiers: [kraken2]
+    standard_16gb:
+      root: /home/induwara/dna_data/FYP/databases/refdb/standard_16gb
+      classifiers: [kraken2]
+    pluspfp_16gb:    # Standard + protozoa, fungi and plants (incl. green algae), capped at 16 GB
+      root: /home/induwara/dna_data/FYP/databases/refdb/pluspfp_16gb
+      classifiers: [kraken2]
+    core_nt:         # NCBI core_nt (bin/download_databases.sh core_nt, 263 GB; not downloaded by default)
+      root: /home/induwara/dna_data/FYP/databases/refdb/core_nt
+      classifiers: []
+      search: /home/induwara/dna_data/FYP/databases/refdb/core_nt/search/core_nt

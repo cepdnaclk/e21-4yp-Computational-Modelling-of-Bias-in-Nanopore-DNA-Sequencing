@@ -1,0 +1,15 @@
+# Data and pipeline outputs live outside the repo (see config/experiment.yaml: outdir)
+outputs/
+work/
+nf-work/
+.nextflow/
+.nextflow.log*
+*.fastq
+*.fastq.gz
+*.fast5
+*.pod5
+*.bam
+*.bai
+__pycache__/
+*.pyc
+.ipynb_checkpoints/

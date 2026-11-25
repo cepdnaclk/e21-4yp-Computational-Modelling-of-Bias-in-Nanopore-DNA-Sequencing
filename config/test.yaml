@@ -1,0 +1,96 @@
+# SMALL TEST: one pass FAST5 file (~3.5k reads), fast models only. Generated from experiment.yaml.
+# Run: ./run_pipeline.sh config/test.yaml
+sample: seaweed_green_jafna_A
+outdir: /home/induwara/dna_data/FYP/outputs_test
+fast5:
+- /home/induwara/dna_data/FYP/fast5_pass-20260930T045200Z-1-001/fast5_pass/FAX38735_pass_0b607977_50b67caa_5.fast5
+threads: 16
+gpu_device: cuda:all
+guppy_bin: /home/induwara/bin/guppy_basecaller
+dorado_bin: /home/induwara/bin/dorado
+dorado_models: /home/induwara/tools/dorado_models
+qc_constants:
+  maxlen: 50000
+host_map:
+  min_mapq: 20
+blast:
+  subsample: 500
+  seed: 11
+  evalue: 1e-5
+  max_target_seqs: 5
+design:
+  mode: full
+  baseline:
+    basecall: guppy-6.5.7:fast
+    trim: none
+    minq: 9
+    minlen: 0
+factors:
+  basecall:
+  - guppy-6.5.7:fast
+  - dorado-0.9.6:fast
+  trim:
+  - none
+  - porechop_abi
+  minq:
+  - 0
+  - 9
+  minlen:
+  - 0
+analyses:
+  host_map:
+    aligner:
+    - minimap2
+    host_ref:
+    - ulva_chloroplast
+  classify:
+    db:
+    - k2_standard_08gb
+  blast:
+    blast_tool:
+    - megablast
+    - minimap2
+    blast_db:
+    - ulva_cp_test
+resources:
+  basecallers:
+    guppy-6.5.7:
+      type: guppy
+      models:
+        fast: dna_r9.4.1_450bps_fast.cfg
+        hac: dna_r9.4.1_450bps_hac.cfg
+        sup: dna_r9.4.1_450bps_sup.cfg
+    dorado-0.9.6:
+      type: dorado
+      models:
+        fast: dna_r9.4.1_e8_fast@v3.4
+        hac: dna_r9.4.1_e8_hac@v3.3
+        sup: dna_r9.4.1_e8_sup@v3.3
+    minknow-7.2.13:
+      type: import
+      models:
+        fast:
+          fastq:
+          - /home/induwara/dna_data/FYP/fastq_pass-20260930T050807Z-1-001/fastq_pass
+          - /home/induwara/dna_data/FYP/fastq_fail-20260930T050001Z-1-001/fastq_fail
+    guppy-6.2.1:
+      type: import
+      models:
+        hac:
+          fastq:
+          - /home/induwara/dna_data/FYP/Basecall_HAC_output-20260924T045029Z-1-001/Basecall_HAC_output/OUTPUT/pass
+          - /home/induwara/dna_data/FYP/Basecall_HAC_output-20260924T045029Z-1-001/Basecall_HAC_output/OUTPUT/fail
+  host_refs:
+    ulva_chloroplast:
+      fasta: /home/induwara/dna_data/FYP/references/ulva_chloroplast/ulva_chloroplast.fa
+  classify_dbs:
+    k2_standard_08gb:
+      classifier: kraken2
+      path: /home/induwara/dna_data/FYP/databases/k2_standard_08gb
+  blast_dbs:
+    algae_bact:
+      db: /home/induwara/dna_data/FYP/databases/blast/algae_bact
+      fasta: /home/induwara/dna_data/FYP/databases/blast/algae_bact.fa
+    ulva_cp_test:
+      db: /home/induwara/dna_data/FYP/databases/blast_test/ulva_cp
+      fasta: /home/induwara/dna_data/FYP/databases/blast_test/ulva_cp.fa

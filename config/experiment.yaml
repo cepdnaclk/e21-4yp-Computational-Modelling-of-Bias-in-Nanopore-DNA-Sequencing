@@ -1,0 +1,106 @@
+# Phase 1 experiment design for the seaweed case study.
+#
+# Every factor level listed under `factors` and `analyses` becomes part of the
+# combination grid (design.py). Each combination gets its own folder under
+# `outdir`, named key=value per factor, holding metadata.json and results.tsv.
+#
+# Resources that do not exist yet (databases, references) are skipped with a
+# warning, so you can run the early stages before Week 2 downloads finish.
+
+sample: seaweed_green_jafna_A
+outdir: /home/induwara/dna_data/FYP/outputs
+
+# Raw input: all 10 FAST5 files (MinKNOW pass + fail). Never modified.
+fast5:
+  - /home/induwara/dna_data/FYP/fast5_pass-20260930T045200Z-1-001/fast5_pass/*.fast5
+  - /home/induwara/dna_data/FYP/fast5_fail-20260930T044928Z-1-001/fast5_fail/*.fast5
+
+threads: 16
+gpu_device: cuda:all
+guppy_bin: /home/induwara/bin/guppy_basecaller
+dorado_bin: /home/induwara/bin/dorado
+dorado_models: /home/induwara/tools/dorado_models
+
+# Fixed settings: recorded in every metadata.json but not varied.
+qc_constants:
+  maxlen: 50000        # reads longer than this are the Q~3 artefacts; kept apart, not "failed"
+host_map:
+  min_mapq: 20
+blast:
+  subsample: 2000      # reads per read set (passed and failed), same seed everywhere
+  seed: 11
+  evalue: 1e-5
+  max_target_seqs: 5
+
+design:
+  mode: full           # full = all combinations | ofat = baseline + one factor at a time
+  # Baseline = the configuration that reproduces the original run, so every
+  # effect is "change relative to what was actually done".
+  baseline:
+    basecall: guppy-6.5.7:hac
+    trim: none
+    minq: 9
+    minlen: 0
+
+factors:
+  # basecaller:model pairs. The model tiers (fast/hac/sup) are named the same
+  # for both basecallers but are different networks; analyse basecall as one
+  # 6-level factor or as basecaller x tier, and say which.
+  basecall:
+    - guppy-6.5.7:fast
+    - guppy-6.5.7:hac
+    - guppy-6.5.7:sup
+    - dorado-0.9.6:fast
+    - dorado-0.9.6:hac
+    - dorado-0.9.6:sup
+    # Existing basecalls (optional, imported, not re-run). guppy-6.2.1 covers only
+    # 28,000 of 35,631 reads, so compare it only on the shared read IDs.
+    # - minknow-7.2.13:fast
+    # - guppy-6.2.1:hac
+  trim: [none, porechop_abi]
+  minq: [0, 7, 8, 9, 10]   # 0 = no quality filter
+  minlen: [0, 500]         # 0 = no length filter
+
+analyses:
+  host_map:
+    aligner: [minimap2]
+    host_ref: [ulva_chloroplast]     # add nuclear / other species refs as they are downloaded
+  classify:
+    db: [k2_standard_08gb]
+  blast:
+    blast_tool: [megablast, minimap2]  # also available: dc-megablast, blastn (slow)
+    blast_db: [algae_bact]
+
+resources:
+  basecallers:
+    guppy-6.5.7:
+      type: guppy
+      models: {fast: dna_r9.4.1_450bps_fast.cfg, hac: dna_r9.4.1_450bps_hac.cfg, sup: dna_r9.4.1_450bps_sup.cfg}
+    dorado-0.9.6:
+      type: dorado
+      models: {fast: "dna_r9.4.1_e8_fast@v3.4", hac: "dna_r9.4.1_e8_hac@v3.3", sup: "dna_r9.4.1_e8_sup@v3.3"}
+    minknow-7.2.13:
+      type: import
+      models:
+        fast:
+          fastq:
+            - /home/induwara/dna_data/FYP/fastq_pass-20260930T050807Z-1-001/fastq_pass
+            - /home/induwara/dna_data/FYP/fastq_fail-20260930T050001Z-1-001/fastq_fail
+    guppy-6.2.1:
+      type: import
+      models:
+        hac:
+          fastq:
+            - /home/induwara/dna_data/FYP/Basecall_HAC_output-20260924T045029Z-1-001/Basecall_HAC_output/OUTPUT/pass
+            - /home/induwara/dna_data/FYP/Basecall_HAC_output-20260924T045029Z-1-001/Basecall_HAC_output/OUTPUT/fail
+  host_refs:
+    ulva_chloroplast:
+      fasta: /home/induwara/dna_data/FYP/references/ulva_chloroplast/ulva_chloroplast.fa
+  classify_dbs:
+    k2_standard_08gb:
+      classifier: kraken2
+      path: /home/induwara/dna_data/FYP/databases/k2_standard_08gb
+  blast_dbs:
+    algae_bact:
+      db: /home/induwara/dna_data/FYP/databases/blast/algae_bact
+      fasta: /home/induwara/dna_data/FYP/databases/blast/algae_bact.fa
